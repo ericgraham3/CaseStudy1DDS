@@ -1,0 +1,344 @@
+---
+title: "Case Study 1 EDA"
+author: "Eric Graham"
+date: "2024-10-13"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(skimr)
+library(corrplot)
+```
+
+# IMPORTANT NOTE
+
+Hello! I wasn't really sure whether we needed to turn this in today and be ready to present tonight, but this is what I have so far. I will be ready to present my findings from this tonight (if that's when we are supposed to present the EDA) or next week.
+
+# Initial look at data
+
+After reading in the data, I wanted to do a high-level look at it to see what variables it contains.
+
+```{r}
+df = read.csv("CaseStudy1-data.csv", header = TRUE)
+colnames(df)
+```
+
+I also want to do a quick check for missing values and get summary statistics for center and spread. The skim package includes a very useful skim() function that is a little more full-featured than summarize(). It splits the variables by datatype and provides a lot of summary data (including the proportion of missing values). 
+
+```{r}
+skim(df)
+```
+
+I'm glad to see we don't have any nulls, but I have a feeling that we're still missing data that we will need for our model. 
+
+## Basic plots for categorical variables
+
+Next, I want to visually examine the data. I created split dataframes for numeric and categorical variables, then I looped over these split dataframes to create histograms and boxplots for the numeric variables, and barplots for the categorical. This isn't a close analysis: I'm just trying to get a sense of how these are distributed, and I want to see if anything strange pops up.
+
+```{r}
+cat_cols = c("Attrition", "BusinessTravel", "Department", "EducationField", "Gender", "JobRole", "MaritalStatus", "Over18", "OverTime")
+num_cols = c("Age", "DailyRate", "DistanceFromHome", "Education", "EnvironmentSatisfaction", "HourlyRate", "JobInvolvement", "JobLevel", "JobSatisfaction", "MonthlyIncome", "MonthlyRate", "NumCompaniesWorked", "PercentSalaryHike", "PerformanceRating", "RelationshipSatisfaction", "StockOptionLevel", "TotalWorkingYears", "TrainingTimesLastYear", "WorkLifeBalance", "YearsAtCompany", "YearsInCurrentRole", "YearsSinceLastPromotion", "YearsWithCurrManager")
+
+df_cat = df %>% select(all_of(cat_cols))
+df_num = df %>% select(all_of(num_cols))
+
+#for (i in 1:ncol(df_cat)) {
+#  barplot(table(df_cat[, i]), main = colnames(df_cat)[i], las = 1, cex.names = .75)
+#}
+
+for (i in 1:ncol(df_cat)) {
+  col_name = colnames(df_cat)[i]
+  container_df = data.frame(value = df_cat[, i]) 
+  
+  g = ggplot(data = container_df, aes(x = value)) +
+    geom_bar(fill = "blue") +
+    labs(x = col_name) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8))
+  print(g)
+}
+```
+
+
+
+## Basic plots for numeric variables
+
+```{r}
+for (i in 1:ncol(df_num)) {
+  col_name = colnames(df_num)[i]
+  container_df = data.frame(value = df_num[, i]) 
+  
+  g = ggplot(data = container_df, aes(x = value)) +
+    geom_histogram(fill = "lightblue") +
+    labs(x = col_name) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 8))
+  print(g)
+  
+  g2 = ggplot(data = container_df, aes(x = value)) +
+    geom_boxplot(fill = "lightblue") +
+    labs(x = col_name) +
+    theme_minimal() +
+    theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+  print(g2)
+}
+```
+
+### Skewness and possible missing values
+
+A few things jump out at my with regards to skewness and possible missing values:
+
+1. Age is slightly right-skewed
+2. DistanceFromHome is very right skewed
+3. EducationLevel is fairly normally distributed
+4. MonthlyIncome is very right-skewed
+5. JobInvolvement is slightly left-skewed
+5. NumCompaniesWorked is very right-skewed, and appears to have some zero values
+6. PercentSalaryHike is very right skewed
+7. StockOptionLevel is right-skewed, and appears to have some zeroes
+8. TotalWorkingYears, YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, and YearsWithCurrManager are all very right-skewed and appear to have some zero values.
+
+For skewed values, I need to look into whether they should be scaled before using them in a predictive model. 
+
+I also want to drill down on some of these variables with 0 values. I'm particularly worried about the variables measured in years: does this mean the data is missing, or that the employee has less than one full year for the relevant variable? Both scenarios have implications for our model. NumCompaniesWorked also seems like it could intuitively be a factor in retention (i.e., if someone has worked at many companies they might be more likely to leave this one) so I also want to make sure I feel good about the 0 values in that variable as well. 
+
+# Zero values in the numeric variables
+
+The first, and easiest, thing to consider about the zero values is simply to know how many of them are out there. 
+
+```{r}
+possible_zeroes = c("NumCompaniesWorked", "StockOptionLevel", "TotalWorkingYears", "YearsAtCompany", "YearsInCurrentRole", "YearsSinceLastPromotion", "YearsWithCurrManager")
+zero_counts = sapply(df_num[, possible_zeroes], function(col) sum(col == 0))
+zero_counts
+```
+
+For a dataset with 870 rows, having this many critical variables with zero values is going to require a careful approach. 
+
+My initial thoughts are:
+
+1. NumCompaniesWorked: A zero value is impossible here, because they were at least employed once, by the current company. So I take this to mean number of prior companies worked at. Thus, I am unconcerned with zero values in this column, and I even think that these zero values might prove useful in our modeling. My first thought is to ignore these zero values.
+2. StockOptionLevel: I take a zero value here to mean that the employee is ineligible for, or declined to participate in, the stock option program. My first thought is to ignore these zero values.
+3. TotalWorkingYears and YearsAtCompany: The first of the "Years" variables, there are few records with zero values here, so there probably won't be any reliable patterns in the data. It seems logical that these may be people who are brand new to the workforce or the company! A decision will be made to ignore, impute, or drop these, but they aren't a subject of great interest. 
+4. YearsInCurrentRole and YearsWithCurrManager: There are a lot of records with zero values in these variables. Again, it seems logical that this means the employees in question are in their first year in their current roles or with their current manager. A decision will be made to ignore, impute, or drop these, but more attention must be paid to any potential non-randomness in these possibly-missing values.
+5. YearsSinceLastPromotion: It seems logical that a zero value in this variable indicates that the employee has never been promoted. 
+
+Thus, I designate YearsInCurrentRole, YearsSinceLastPromotion and YearsWithCurrManager as "interesting zeroes." 
+
+```{r}
+interesting_zeroes = c("YearsInCurrentRole", "YearsWithCurrManager")
+```
+
+My primary concern is to avoid dropping or imputing missing values that aren't randomly missing. I want to look for patterns of interesting zeroes among the categorical variables that might be of interest for my model. 
+
+NOTE: I wanted so badly to do a loop for this and maybe some sort of fancy visualization but I was spending too much time on it, so I went super basic.
+
+## Zeroes by BusinessTravel
+
+The percentage of zeroes seems consistent among the Business Travel values (considering that the "Travel_Frequently" group is very small).
+
+```{r}
+zero_by_business_travel = df %>%
+  group_by(BusinessTravel) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_business_travel
+
+zero_by_business_travel = df %>%
+  group_by(BusinessTravel) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_business_travel
+```
+
+## Zeroes by Department
+
+There don't seem to be any trends across the departments.
+
+```{r}
+zero_by_department = df %>%
+  group_by(Department) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_department
+
+zero_by_department = df %>%
+  group_by(Department) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_department
+```
+
+## Zeroes by EducationField
+
+Here, we see consistency across the EducationField values, considering that the "Human Resources" and "Other" groups are small.
+
+```{r}
+zero_by_education_field = df %>%
+  group_by(EducationField) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_education_field
+
+zero_by_education_field = df %>%
+  group_by(EducationField) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_education_field
+```
+
+## Zeroes by Gender
+
+This is the first sign of what I would consider to be a potentially non-random relationship between a categorical variable and the presence of zeroes. It's possible that the company has hired more men recently, but the ratio here seems to be disproportionate to the ratio of men and women across the company. 
+
+```{r}
+zero_by_gender = df %>%
+  group_by(Gender) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_gender
+
+zero_by_gender = df %>%
+  group_by(Gender) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_gender
+
+gender_proportion = df %>%
+  count(Gender) %>%  
+  mutate(percentage = n / sum(n) * 100)
+gender_proportion
+```
+
+## Zeroes by JobRole
+
+Here, we see an outsized number of employees with 0 values who are in the Laboratory Technician role. Domain knowledge could be useful here (perhaps it is a new role, or one which they recently hired for), but in the absence of any confirmation I need to be cautious about this (in addition to the gender relationship shown above). 
+
+```{r}
+zero_by_job_role = df %>%
+  group_by(JobRole) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_job_role
+
+zero_by_job_role = df %>%
+  group_by(JobRole) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_job_role
+```
+
+## Zeroes by MaritalStatus
+
+There is nothing here to indicate that there is covariance between MaritalStatus and the zero values in question. 
+
+```{r}
+zero_by_marital_status = df %>%
+  group_by(MaritalStatus) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_marital_status
+
+zero_by_marital_status = df %>%
+  group_by(MaritalStatus) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_marital_status
+```
+
+## Zeroes by OverTime
+
+There is nothing here to indicate that there is covariance between OverTime and the zero values in question. 
+
+```{r}
+zero_by_overtime = df %>%
+  group_by(OverTime) %>%
+  summarize(across(all_of(interesting_zeroes), ~ mean(. == 0, na.rm = TRUE) * 100, .names = "{.col}"))
+zero_by_overtime
+
+zero_by_overtime = df %>%
+  group_by(OverTime) %>%
+  summarize(across(all_of(interesting_zeroes), ~ sum(. == 0, na.rm = TRUE), .names = "{.col}"))
+zero_by_overtime
+```
+
+### Final thoughts on possible missing values in numeric variables
+
+Before building the model, I need to resolve the possibly non-random zeroes found in the YearsInCurrentRole and YearsWithCurrManager variables. It is still entirely possible that the high number of zeroes seen in these variables is due to new hiring and/or transfers amongst departments. If this is the only way to know whether someone is in their first year at the company then it would be harmful to the model to remove these values or impute them. 
+
+# Correlation with Attrition
+
+This seems like the most direct method to look for variables that could be relevant to our model. 
+
+## Correlation matrix to look for relationships between numeric variables and Attrition
+
+We see 10 variables that have a correlation of .10 or higher (mostly negative), but two of those (YearsInCurrentRole and YearsWithCurrManager) might be skewed by missing values. We see five more numeric variables with between .05 and .099 correlation.
+
+```{r}
+num_corr <- df %>%
+  select(all_of(num_cols), Attrition) %>%
+  mutate(Attrition = ifelse(Attrition == "Yes", 1, 0))
+corr_matrix = cor(num_corr)
+attrition_corr = corr_matrix["Attrition", ]
+attrition_corr
+attrition_corr_df = data.frame(Correlation = attrition_corr)
+attrition_corr_df = attrition_corr_df %>%
+  arrange(desc(abs(Correlation)))
+print(attrition_corr_df)
+```
+
+The corrplot library provides an easy way to visualize correlation in a dataset. By filtering to look at the variables that have the highest correlation to Attrition, we can get a better idea of their relative weight.
+
+```{r}
+num_corr_reduce = num_corr %>% 
+  select(Attrition, JobInvolvement, TotalWorkingYears, JobLevel, YearsInCurrentRole, MonthlyIncome, Age, StockOptionLevel, YearsWithCurrManager, YearsAtCompany, JobSatisfaction, WorkLifeBalance, DistanceFromHome, EnvironmentSatisfaction, TrainingTimesLastYear, NumCompaniesWorked)
+corr_matrix = cor(num_corr_reduce)
+corrplot(corr_matrix, method="circle")
+```
+
+This analysis leads me to look first at JobInvolvement, TotalWorkingYears, JobLevel, YearsInCurrentRole, MonthlyIncome, Age, StockOptionLevel, YearsWithCurrManager, YearsAtCompany, JobSatisfaction, WorkLifeBalance, DistanceFromHome, EnvironmentSatisfaction, TrainingTimesLastYear, and NumCompaniesWorked as numeric values which might be relevant to our model.
+
+## Chi-square test to look for relationships between categorical variables and Attrition
+
+The chi-square test can be used to test the likelihood that any relationship between categorical variables happened by chance. The null hypothesis is that the two variables are related, and the alternative hypothesis is that the variables are independent, so a low p-value is evidence that there is no relationship between the variables.
+
+### BusinessTravel
+
+```{r}
+chisq.test(df$Attrition, df$BusinessTravel)
+```
+
+Here, we see evidence (though not overwhelming) to suggest that BusinessTravel and Attrition are independent. We reject the null hypothesis.
+
+### Department
+
+```{r}
+chisq.test(df$Attrition, df$Department)
+```
+
+Here, we see strong evidence that Department and Attrition are independent, and we reject the null hypothesis.
+
+### EducationField
+
+```{r}
+chisq.test(df$Attrition, df$EducationField)
+```
+
+Here, we do not see sufficient statistical evidence that EducationField and Attrition are independent. We fail to reject the null hypothesis.
+
+### Gender
+
+```{r}
+chisq.test(df$Attrition, df$Gender)
+```
+
+Here, we do not see sufficient statistical evidence that EducationField and Attrition are independent. We fail to reject the null hypothesis.
+
+### JobRole
+
+```{r}
+chisq.test(df$Attrition, df$JobRole)
+```
+
+Here, we see strong evidence that JobRole and Attrition are independent, and we reject the null hypothesis.
+
+### MaritalStatus
+
+```{r}
+chisq.test(df$Attrition, df$MaritalStatus)
+```
+
+Here, we see strong evidence that MaritalStatus and Attrition are independent, and we reject the null hypothesis.
+
+### Conclusion
+
+These tests lead me to look first at Gender and JobRole as categorical factors which might be relevant to our model.
