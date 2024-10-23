@@ -1,0 +1,130 @@
+---
+title: "DDS Project 1 EDA Presentation"
+author: "Eric Graham"
+date: "2024-10-23"
+output: 
+  powerpoint_presentation:
+    slide_level: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Introduction
+
+![Eric Graham, Data Scientist, DDSAnalytics](profile.jpg)
+
+![Frito Lay, Global Snack Food Manufacturer](fl_logo.png)
+
+## Predicting Employee Attrition and Retention
+
+* Employee data provided by Frito Lay's Human Resources can reveal trends driving attrition
+* Exploratory data analysis provides a high-level view of attrition and retention
+* Classification models can help predict employee attrition
+* Identifying the causes of attrition empowers leaders to build and maintain strong teams
+
+## Why is attrition important?
+
+* Employees are an investment
+* Employee turnover is costly
+  * [Applauz](https://www.applauz.me/resources/costs-of-employee-turnover) estimates that "The costs of replacing an individual worker can range from half to four times the employee’s annual salary."
+* Retention gives businesses a competetive advantage
+  * According to [Oracle](https://www.oracle.com/human-capital-management/employee-retention/), "Improving employee retention rates can lower costs, increase worker productivity, and ultimately boost revenues and profits."
+
+## Overview of Employee Dataset
+
+* Data provided for 870 employees, 730 of whom are still with the company
+* 36 columns covering a variety of characteristics
+* Includes both objective information (age, pay, experience) and self-reported impressions of employee engagement and job satisfaction
+* No missing data
+
+## Highlight 1: Job Role
+
+![](job_role_1.png)
+
+![](job_role_2.png)
+
+|               | P-Value from Chi-Square Test |
+| ------------- | ---------------------------- |
+| JobRole       | <.0001                       |
+| Department    | 0.0094                       |
+
+## Highlight 2: Overtime
+
+![](overtime_1.png)
+![](overtime_2.png)
+
+|               | P-Value from Chi-Square Test |
+| ------------- | ---------------------------- |
+| OverTime      | <.0001                       |
+
+## Highlight 3: Marital Status
+
+![](marital_status_1.png)
+
+![](marital_status_2.png)
+
+|               | P-Value from Chi-Square Test |
+| ------------- | ---------------------------- |
+| MaritalStatus | <.0001                       |
+
+## Correlation With Attrition
+
+![](corr_1.png)
+
+---
+
+#### Positive Correlation (increases chance of attrition)
+
+| Variable                   | Correlation |
+| -------------------------- | ----------- |
+| Distance from Home         | 0.0871363   |
+| Number of Companies Worked | 0.0610189   |
+| Hourly Rate                | 0.0365542   |
+| Performance Rating         | 0.0153338   |
+
+---
+
+#### Negative Correlation (decreases chance of attrition)
+
+| Variable                   | Correlation |
+| -------------------------- | ----------- |
+| Job Involvement            | -0.187793   |
+| Total Working Years        | -0.167206   |
+| Job Level                  | -0.162136   |
+| Years in Current Role      | -0.156216   |
+| Monthly Income             | -0.154915   |
+| Age                        | -0.149384   |
+| Stock Option Level         | -0.14868    |
+| Years with Current Manager | -0.146782   |
+| Years at Company           | -0.128754   |
+| Job Satisfaction           | -0.107521   |
+
+#### These relationships aren't strong individually, but together they can help build a predictive model
+
+## Predictive Model 1: Naive Bayes
+
+* Initial modeling used all variables
+* 85.5% accuracy (proportion of all correct predictions)
+* 90.3% sensitivity (positively identifying attrition)
+* 60.4% specificity (avoiding false positives)
+
+## Predicitve Model 2: K Nearest Neighbors
+
+* Initial modeling used selected variables
+* 74.9% accuracy (proportion of all correct predictions)
+* 85.6% sensitivity (positively identifying attrition)
+* 19.6% specificity (avoiding false positives)
+
+## Next Steps for Predictive Model
+
+* Analyze results of recursive feature elimination to identify key variables
+* Feature selection: feeding the model the right amount of variables
+* Feature engineering: optimizing variables to enhance model performance
+
+## Conclusion
+
+* Identify further areas of interest from full EDA
+* Finalize predictive models
+* Questions/Comments/Suggestions? Contact Eric Graham (ericgraham@smu.edu)
