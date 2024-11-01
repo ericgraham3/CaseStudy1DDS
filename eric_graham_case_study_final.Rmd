@@ -23,6 +23,12 @@ library(glmnet)
 options(scipen=999)
 ```
 
+# Link to presentation and Github
+
+[My Zoom recording can be found here](https://smu-2u-com.zoom.us/rec/share/EXHwE64QtUFJipHWpKZYXN5mIuR7KbZLP59McSuP9GrCcTYDHO3ZBDrGxHfcVXdU.Qbk0IuvE3_1WjFo1)
+
+[My project repo can be found here](https://github.com/ericgraham3/CaseStudy1DDS)
+
 # Exploratory Data Analysis
 
 ## Initial look at data
