@@ -1,0 +1,539 @@
+---
+title: "Eric Graham Project 1 Final"
+author: "Eric Graham"
+date: "2024-10-21"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(skimr)
+library(corrplot)
+library(e1071)
+library(caret)
+library(mltools)
+library(data.table)
+library(car)
+library(class)
+library(tidyverse)
+library(ggthemes)
+library(glmnet)
+options(scipen=999)
+```
+
+# Exploratory Data Analysis
+
+## Initial look at data
+
+After reading in the data, I use skim() to get a thorough summary (and confirm no missing values). I also dropped some variables that aren't useful for analysis (Over18 and StandardHours only have one value each). 
+
+```{r}
+df = read.csv("CaseStudy1-data.csv")
+head(df)
+skim(df)
+colnames(df)
+df = df[, !(names(df) %in% c("ID", "EmployeeCount", "EmployeeNumber", "Over18", "StandardHours"))]
+```
+
+### Overall attrition count
+
+```{r}
+attrition_count = sum(df$Attrition == "Yes")
+print(attrition_count)
+```
+
+### Factoring categorical variables
+
+I make the categorical variables (including Attrition) into factors for further analysis/testing.
+
+```{r}
+cat_vars = c("Attrition", "BusinessTravel", "Department", "EducationField", "Gender", "JobRole", "MaritalStatus", "OverTime")
+df[cat_vars] = lapply(df[cat_vars], as.factor)
+```
+
+## Categorical Variable Analysis
+
+### Visualization of categorical variables
+
+I broke out a dataframe for categorical variables which I looped over for visualization. A visual examination of the categorical variables reveals a few trends in attrition:
+
+1. Sales Representative, Sales Executive, Laboratory Technician, and Research Scientist job roles seem to be the most affected by attrition.
+2. Overtime workers and single workers also seem to be disproportionately represented affected by attrition. 
+
+```{r warning=FALSE}
+cat_vars = c("BusinessTravel", "Department", "EducationField", "Gender", "JobRole", "MaritalStatus", "OverTime")
+df_cat = df %>% select(all_of(cat_vars))
+for (i in 1:ncol(df_cat)) {
+  col_name = colnames(df_cat)[i]
+  container_df = data.frame(value = df_cat[, i], Attrition = df$Attrition)
+  
+  g = ggplot(data = container_df, aes(x = value, fill = Attrition)) +
+    geom_bar(position = "fill") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    labs(x = col_name, y = "Proportion", fill = "Attrition") +
+    ggtitle(paste("Percentage of Attrition by", col_name)) +
+    scale_fill_few() +
+    theme_few() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+  
+  print(g)
+  
+  g_2 = ggplot(data = container_df, aes(x = value, fill = Attrition)) +
+    geom_bar(position = "stack") +
+    labs(x = col_name, y = "Count", fill = "Attrition") +
+    ggtitle(paste("Count of Attrition by", col_name)) +
+    scale_fill_few() +
+    theme_few() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+  
+  print(g_2)
+}
+```
+
+### Chi-square tests for categorical variables
+
+In addition to a visual analysis of the categorical values, I used chi-square tests to look for evidence of relationships between those categorical variables and Attrition. Our null hypothesis assumes that there is no relationship, so a low p-value would indicate evidence of a relationship with attrition. 
+
+We see overwhelming evidence that OverTime, JobRole, and MaritalStatus are related to Attrition, and strong evidence that Department is related to Attrition. The p-value for BusinessTravel meets the threshold for a 95% confidence level, but is close enough that we can only say that the evidence suggests a relationship.
+
+```{r warning=FALSE}
+results = data.frame(Variable = character(), PValue = numeric(), stringsAsFactors = FALSE)
+for (col in cat_vars) {
+  test_result = chisq.test(table(df[[col]], df$Attrition))
+  results = rbind(results, data.frame(Variable = col, PValue = test_result$p.value, Statistic = test_result$statistic))
+}
+
+results = results[order(results$PValue), ]
+
+print(results)
+```
+
+### Visualizations for EDA presentation
+
+In my EDA, I want to present visuals related to OverTime, JobRole, and MaritalStatus. Instead of using the ones from the loop (which include the camel-case variable names) I'm making specific graphs for these three.
+
+```{r warning=FALSE}
+g_ot_yes_pct = ggplot(data = subset(df, Attrition == "Yes"), aes(x = OverTime)) +
+  geom_bar(aes(y = (..count..) / sum(..count..)), fill = "#779ecb") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "Overtime", y = "Percentage", title = "Percentage of Attrition by Overtime") +
+  theme_few() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+
+print(g_ot_yes_pct)
+
+g_ms_yes_pct = ggplot(data = subset(df, Attrition == "Yes"), aes(x = MaritalStatus)) +
+  geom_bar(aes(y = (..count..) / sum(..count..)), fill = "#779ecb") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "Marital Status", y = "Percentage", title = "Percentage of Attrition by Marital Status") +
+  theme_few() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+
+print(g_ms_yes_pct)
+
+g_jr_yes_pct = ggplot(data = subset(df, Attrition == "Yes"), aes(x = JobRole)) +
+  geom_bar(aes(y = (..count..) / sum(..count..)), fill = "#779ecb") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "Job Role", y = "Percentage", title = "Percentage of Attrition by Job Role") +
+  theme_few() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+
+print(g_jr_yes_pct)
+```
+
+## Numeric Variable Analysis
+
+My approach to the numeric variables was to handle the discreet and continuous variables separately. 
+
+### Visualization of continuous variables
+
+A visualization of the distribution of the continuous variables shows a few trends:
+
+1. Age is slightly right-skewed
+2. DistanceFromHome, MonthlyIncome, PercentSalaryHike, TotalWorkingYears, YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, and YearsWithCurrManager are all very right-skewed.
+
+```{r}
+continuous_vars = c("Age", "DailyRate", "DistanceFromHome", "HourlyRate", "MonthlyIncome", "MonthlyRate", "PercentSalaryHike", "TotalWorkingYears", "YearsAtCompany", "YearsInCurrentRole", "YearsSinceLastPromotion", "YearsWithCurrManager")
+
+cont_df = df %>% select(all_of(continuous_vars))
+
+for (i in 1:ncol(cont_df)) {
+  col_name = colnames(cont_df)[i]
+  container_df = data.frame(value = cont_df[, i]) 
+  
+  g_3 = ggplot(data = container_df, aes(x = value)) +
+    geom_histogram(fill = "#EEDD88", bins = 30) +
+    labs(x = col_name, y = "Count", title = paste("Histogram of", col_name)) +
+    theme_few() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+
+  print(g_3)
+
+  g_4 = ggplot(data = container_df, aes(x = value, y = "")) +
+    geom_boxplot(fill = "#EEDD88") +
+    labs(x = col_name, y = "", title = paste("Boxplot of", col_name)) +
+    theme_few() +
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+  
+  print(g_4)
+}
+
+```
+
+### Visualization of discrete variables
+
+I also wanted to examine the distribution of our discrete variables. As we see below JobLevel, NumCompaniesWorked, and StockOptionLevel, are all very right-skewed.
+
+```{r}
+discrete_vars = c("Education", "EnvironmentSatisfaction", "JobInvolvement", "JobLevel", "JobSatisfaction", "NumCompaniesWorked", "PerformanceRating", "RelationshipSatisfaction", "StockOptionLevel", "TrainingTimesLastYear", "WorkLifeBalance")
+
+discrete_df = df %>% select(all_of(discrete_vars))
+
+for (i in 1:ncol(discrete_df)) {
+  col_name = colnames(discrete_df)[i]
+  container_df = data.frame(value = discrete_df[, i]) 
+  
+  g_5 = ggplot(data = container_df, aes(x = as.factor(value))) +
+    geom_bar(fill = "#7495B8") +
+    labs(x = col_name, y = "Count", title = paste("Bar Chart of", col_name)) +
+    theme_few() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+  
+  print(g_5)
+}
+```
+
+### Correlation of numeric variables
+
+This analysis of the numeric variables is going to be useful when we fit our model, because the Naive Bayes model assumes a normal distribution of continuous variables. Transformations may be helpful in getting the best results from an NB model. K Nearest Neighbors is non-parametric, and might handle the skewed values better without transformation. 
+
+Of course, the greatest question about our numeric variables is whether they are can help predict employee attrition. I created a correlation matrix to quantify the correlation between both continuous and discrete variables with the Attrition variable. A few observations stand out:
+
+1. None of the numeric variables are highly correlated to Attrition; the one with the highest positive correlation (DistanceFromHome) has a correlation coefficient of .087. The only other numeric variable with a correlation coefficient greater than .05 is NumCompaniesWorked (.061).
+2. However, there are some numeric variables that have a stronger negative correlation coefficient. This gives us some potential insight into employee retention, and will be useful when fitting our model.
+
+#### Correlation matrix and plot for continuous variables
+
+```{r}
+cont_df$Attrition_num = as.numeric(df$Attrition)
+corr_matrix = cor(cont_df)
+attrition_corr = corr_matrix["Attrition_num", ]
+attrition_corr_df = data.frame(Correlation = attrition_corr)
+attrition_corr_df = attrition_corr_df %>%
+  arrange(desc(Correlation))
+print(attrition_corr_df)
+corrplot(corr_matrix)
+```
+
+#### Correlation matrix and plot for discrete variables
+
+```{r}
+discrete_df$Attrition_num = as.numeric(df$Attrition)
+corr_matrix = cor(discrete_df)
+attrition_corr = corr_matrix["Attrition_num", ]
+attrition_corr_df = data.frame(Correlation = attrition_corr)
+attrition_corr_df = attrition_corr_df %>%
+  arrange(desc(Correlation))
+print(attrition_corr_df)
+corrplot(corr_matrix)
+
+```
+
+#### Correlation among continuous variables
+
+I also tested the continuous variables for correlation among each other. Again, this will be useful for fitting our model, so as to avoid redundant variables "voting" multiple times. The below relationships have a correlation coefficient of greater than .5, so I want to be mindful of them when tuning the predictive model.
+
+```{r}
+correlation_matrix = cor(cont_df, use = "complete.obs")
+correlation_df = as.data.frame(as.table(correlation_matrix))
+filtered_corr_df = correlation_df %>%
+  filter(abs(Freq) >= 0.5 & Var1 != Var2)
+print(filtered_corr_df)
+```
+
+### Visualizations of numeric data for EDA presentation
+
+The correlation plots are a little crowded for the EDA presentation slide, so I created a barplot that just shows the most correlated variables.
+
+```{r}
+selected_vars = c("Age", "DistanceFromHome", "HourlyRate", "JobInvolvement", "JobLevel", "JobSatisfaction", "MonthlyIncome",  "NumCompaniesWorked", "PerformanceRating", "StockOptionLevel", "TotalWorkingYears", "YearsAtCompany", "YearsInCurrentRole", "YearsWithCurrManager")
+
+selected_df = df %>% select(all_of(selected_vars))
+selected_df$Attrition_numeric = as.numeric(df$Attrition)
+corr_matrix = cor(selected_df)
+attrition_corr = corr_matrix["Attrition_numeric", ]
+attrition_corr_df = data.frame(Variable = names(attrition_corr)[-length(attrition_corr)], Correlation = attrition_corr[-length(attrition_corr)])
+attrition_corr_df = attrition_corr_df %>% arrange(desc(Correlation))
+attrition_corr_df
+
+g_corr = ggplot(attrition_corr_df, aes(x = reorder(Variable, Correlation), y = Correlation)) +
+  geom_bar(stat = "identity", fill = "#7495B8") +
+  coord_flip() +  # Flip coordinates to make it horizontal
+  labs(x = "Variables", y = "Correlation with Attrition", title = "Correlations with Attrition") +
+  theme_few()
+
+print(g_corr)
+```
+
+I also created tables to highlight these correlations.
+
+#### Positive Correlations
+
+| Variable                   | Correlation |
+| -------------------------- | ----------- |
+| Distance from Home         | 0.0871363   |
+| Number of Companies Worked | 0.0610189   |
+| Hourly Rate                | 0.0365542   |
+| Performance Rating         | 0.0153338   |
+
+#### Negative Correlations
+
+| Variable                   | Correlation |
+| -------------------------- | ----------- |
+| Job Involvement            | -0.187793   |
+| Total Working Years        | -0.167206   |
+| Job Level                  | -0.162136   |
+| Years in Current Role      | -0.156216   |
+| Monthly Income             | -0.154915   |
+| Age                        | -0.149384   |
+| Stock Option Level         | -0.14868    |
+| Years with Current Manager | -0.146782   |
+| Years at Company           | -0.128754   |
+| Job Satisfaction           | -0.107521   |
+
+## Modeling
+
+## Feature Selection
+
+### Recursive Feature Elimination and Variable Importance
+
+In anticipation of model-fitting, I implemented the below code for Recursive Feature Elimination (RFE) from [Okan Bulut's post on Towards Data Science](https://towardsdatascience.com/effective-feature-selection-recursive-feature-elimination-using-r-148ff998e4f7). This tests for the variables that are most important to predicting Attrition, and provides a score for variable importance which we can visualize.
+
+RFE starts with a full set of features, and iteratively removes the least important feature based on the model's performance. This makes it a useful tool for finding the most impactful individual features of a model.
+
+```{r}
+# the next two code chunkes were based entirely on the work of Okal Bulut, see
+# https://towardsdatascience.com/effective-feature-selection-recursive-feature-elimination-using-r-148ff998e4f7
+control <- rfeControl(functions = rfFuncs, # random forest
+                      method = "repeatedcv", # repeated cv
+                      repeats = 5, # number of repeats
+                      number = 10) # number of folds
+
+x <- df %>%
+  select(BusinessTravel, Department, EducationField, Gender, JobRole, MaritalStatus, OverTime, Age, DailyRate, DistanceFromHome, Education, EnvironmentSatisfaction, HourlyRate, JobInvolvement, JobLevel, JobSatisfaction, MonthlyIncome, MonthlyRate, NumCompaniesWorked, PercentSalaryHike, PerformanceRating, RelationshipSatisfaction, StockOptionLevel, TotalWorkingYears, TrainingTimesLastYear, WorkLifeBalance, YearsAtCompany, YearsInCurrentRole, YearsSinceLastPromotion, YearsWithCurrManager) %>%
+  as.data.frame()
+
+y <- df$Attrition
+
+set.seed(2021)
+inTrain <- createDataPartition(y, p = .80, list = FALSE)[,1]
+
+x_train <- x[ inTrain, ]
+x_test  <- x[-inTrain, ]
+
+y_train <- y[ inTrain]
+y_test  <- y[-inTrain]
+
+# Run RFE
+result_rfe1 <- rfe(x = x_train, 
+                   y = y_train, 
+                   sizes = c(5,10,15,20,25,30),
+                   rfeControl = control)
+
+# Print the results
+result_rfe1
+
+# Print the selected features
+predictors(result_rfe1)
+```
+```{r}
+# Print the results visually
+ggplot(data = result_rfe1, metric = "Accuracy") + theme_few()
+ggplot(data = result_rfe1, metric = "Kappa") + theme_few()
+```
+
+
+```{r}
+varimp_data <- data.frame(feature = row.names(varImp(result_rfe1))[1:30],
+                          importance = varImp(result_rfe1)[1:30, 1])
+varimp_data$importance <- scale(varimp_data$importance)
+varimp_data
+ggplot(data = varimp_data, 
+       aes(x = reorder(feature, -importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#779ecb") + 
+  labs(x = "Features", y = "Variable Importance", title = "Recursive Feature Elimination Results") +
+  theme_few() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 8))
+
+```
+
+### Lasso Regression for Feature Interactions
+
+Whereas RFE is a userful tool for identifying individual features of importance, I wanted to identify important feature interactions to leverage subtle trends in the data. Lasso regression applies a penalty to a linear regression model, shrinking less important feature coefficients to identify which features (or feature interactions) have the most impact on model performance. Because it is efficient at handling large sets of pairwise feature interactions, I used it as a supplement to the feature set I had already I had already selected through EDA and RFE.
+
+Lasso regression produced a handful of feature interactions with relatively high coefficients, which indicates that they might be of predictive value: EducationField and JobRole; BusinessTravel and JobRole; MaritalStatus and OverTime; Gender and OverTime; JobRole and OverTime; EducationField and MaritalStatus; EnvironmentSatisfaction and WorkLifeBalance. These interactions incorporate some of what we know to be the most important features, but also introduces data from the EducationField, EnvironmentSatisfaction, and WorkLifeBalance features.
+
+```{r}
+df_dummy = model.matrix(Attrition ~ .^2, data = df)[, -1]
+
+y = as.numeric(df$Attrition == "Yes")
+
+lasso_model = cv.glmnet(df_dummy, y, alpha = 1, family = "binomial")
+
+selected_features = as.matrix(coef(lasso_model, s = "lambda.min"))
+
+selected_features = selected_features[selected_features != 0, , drop = FALSE]
+
+selected_features_df <- data.frame(
+  feature = rownames(selected_features),
+  coefficient = as.vector(selected_features)
+)
+
+selected_features_df = selected_features_df[order(abs(selected_features_df$coefficient), decreasing = TRUE), ]
+print(selected_features_df, row.names = FALSE)
+# View(selected_features_df)
+```
+
+## Data Balancing, Probability Tuning, and Binning of Continuous Variables
+
+Because the attrition class was so unbalanced (making up only 16% of the total dataset) I randomly downsampled the non-attrition class to create a two-to-one ratio of non-attrition to attrition. The improved the model's sensitivity while preserving specificity.
+
+By default, naive bayes will use a 50% probability threshold to determine whether to predict a binary outcome (like attrition). I raised this threshold to .63 (a value I determined via trial and error) to maximize specificity while maintaining high sensitivity.
+
+I made various attempts at binning the continuous variables, but it only had a negative impact on performance.
+
+## Testing the Model
+
+I tested the model with up to 10000 different random seeds and calculated the mean accuracy, sensiticity, and specificity scores over from those iterations. Because the train/test split and downsampling is done at random, those operations are included in the loop so they benefit from the additional randomness introduced by changing the seed. The feature interactions were also included inside the loop to ensure that they correspond to each different train/test split. 
+
+Based on 10000 random seeds, with an 85/15 train test split, this model returned means of 0.761519 for accuracy, 0.8138143 for sensitivity, 0.6582598 for specificity, and 
+0.8180598 for F1.
+
+![](itsalive3.png)
+
+```{r}
+# create variables for iterations of random seeds and proportion of train/test split
+
+iterator = 10000
+split_proportion = .85
+
+# create container variables for metrics
+
+accuracy_container = numeric(iterator)
+sensitivity_container = numeric(iterator)
+specificity_container = numeric(iterator)
+f1_container = numeric(iterator)
+
+for (i in 1:iterator) {
+
+  # set random seed
+  
+  set.seed(i)
+  
+  # downsample non-attrition class
+  
+  non_attrition = df %>% filter(Attrition == "No")
+  attrition = df %>% filter(Attrition == "Yes")
+  downsampled_non_attrition_2to1 = non_attrition %>% sample_n(2 * nrow(attrition))
+  balanced_data_2to1 = bind_rows(downsampled_non_attrition_2to1, attrition)
+  
+  # train/test split
+
+  training_flag = sample(nrow(balanced_data_2to1), size = split_proportion * nrow(balanced_data_2to1))
+  train_attrition = balanced_data_2to1[training_flag, ]
+  test_attrition = balanced_data_2to1[-training_flag, ]
+  
+  # feature interactions
+
+  train_attrition$EducationField_JobRole = interaction(train_attrition$EducationField, train_attrition$JobRole)
+  train_attrition$BusinessTravel_JobRole = interaction(train_attrition$BusinessTravel, train_attrition$JobRole)
+  train_attrition$MaritalStatus_OverTime = interaction(train_attrition$MaritalStatus, train_attrition$OverTime)
+  train_attrition$Gender_OverTime = interaction(train_attrition$Gender, train_attrition$OverTime)
+  train_attrition$JobRole_OverTime = interaction(train_attrition$JobRole, train_attrition$OverTime)
+  train_attrition$EducationField_MaritalStatus = interaction(train_attrition$EducationField, train_attrition$MaritalStatus)
+  train_attrition$EnvironmentSatisfaction_WorkLifeBalance = interaction(train_attrition$EnvironmentSatisfaction, train_attrition$WorkLifeBalance)
+
+  test_attrition$EducationField_JobRole = interaction(test_attrition$EducationField, test_attrition$JobRole)
+  test_attrition$BusinessTravel_JobRole = interaction(test_attrition$BusinessTravel, test_attrition$JobRole)
+  test_attrition$MaritalStatus_OverTime = interaction(test_attrition$MaritalStatus, test_attrition$OverTime)
+  test_attrition$Gender_OverTime = interaction(test_attrition$Gender, test_attrition$OverTime)
+  test_attrition$JobRole_OverTime = interaction(test_attrition$JobRole, test_attrition$OverTime)
+  test_attrition$EducationField_MaritalStatus = interaction(test_attrition$EducationField, test_attrition$MaritalStatus)
+  test_attrition$EnvironmentSatisfaction_WorkLifeBalance = interaction(test_attrition$EnvironmentSatisfaction, test_attrition$WorkLifeBalance)
+  
+  # fit model
+
+  attrition_model = naiveBayes(Attrition ~ OverTime + JobRole + MaritalStatus + Department + JobLevel + Age + TotalWorkingYears + MonthlyIncome + StockOptionLevel + YearsWithCurrManager + DistanceFromHome + NumCompaniesWorked + JobInvolvement + JobSatisfaction + BusinessTravel + HourlyRate + EducationField_JobRole + BusinessTravel_JobRole + MaritalStatus_OverTime + Gender_OverTime + JobRole_OverTime + EducationField_MaritalStatus + EnvironmentSatisfaction_WorkLifeBalance, data = train_attrition, laplace = 1)
+
+  # predictions made on adjusted probability
+  
+  attrition_probs = predict(attrition_model, test_attrition, type = "raw")
+  attrition_prediction = ifelse(attrition_probs[, "Yes"] > 0.63, "Yes", "No")
+  
+  # create confusion matrix and extract metrics
+  
+  confusion_matrix = confusionMatrix(factor(attrition_prediction), factor(test_attrition$Attrition))
+  
+  accuracy_container[i] = confusion_matrix$overall['Accuracy']
+  sensitivity_container[i] = confusion_matrix$byClass['Sensitivity']
+  specificity_container[i] = confusion_matrix$byClass['Specificity']
+  f1_container[i] = confusion_matrix$byClass['F1']
+}
+
+mean(accuracy_container)
+mean(sensitivity_container)
+mean(specificity_container)
+mean(f1_container)
+total = mean(accuracy_container) + mean(sensitivity_container) + mean(specificity_container)
+total
+```
+
+## Prediction
+
+```{r}
+# downsample non-attrition class
+
+non_attrition = df %>% filter(Attrition == "No")
+attrition = df %>% filter(Attrition == "Yes")
+downsampled_non_attrition_2to1 = non_attrition %>% sample_n(2 * nrow(attrition))
+balanced_data_2to1 = bind_rows(downsampled_non_attrition_2to1, attrition)
+
+# feature interactions
+
+balanced_data_2to1$EducationField_JobRole = interaction(balanced_data_2to1$EducationField, balanced_data_2to1$JobRole)
+balanced_data_2to1$BusinessTravel_JobRole = interaction(balanced_data_2to1$BusinessTravel, balanced_data_2to1$JobRole)
+balanced_data_2to1$MaritalStatus_OverTime = interaction(balanced_data_2to1$MaritalStatus, balanced_data_2to1$OverTime)
+balanced_data_2to1$Gender_OverTime = interaction(balanced_data_2to1$Gender, balanced_data_2to1$OverTime)
+balanced_data_2to1$JobRole_OverTime = interaction(balanced_data_2to1$JobRole, balanced_data_2to1$OverTime)
+balanced_data_2to1$EducationField_MaritalStatus = interaction(balanced_data_2to1$EducationField, balanced_data_2to1$MaritalStatus)
+balanced_data_2to1$EnvironmentSatisfaction_WorkLifeBalance = interaction(balanced_data_2to1$EnvironmentSatisfaction, balanced_data_2to1$WorkLifeBalance)
+
+# fit model
+
+attrition_model = naiveBayes(Attrition ~ OverTime + JobRole + MaritalStatus + Department + JobLevel + Age + TotalWorkingYears + MonthlyIncome + StockOptionLevel + YearsWithCurrManager + DistanceFromHome + NumCompaniesWorked + JobInvolvement + JobSatisfaction + BusinessTravel + HourlyRate + EducationField_JobRole + BusinessTravel_JobRole + MaritalStatus_OverTime + Gender_OverTime + JobRole_OverTime + EducationField_MaritalStatus + EnvironmentSatisfaction_WorkLifeBalance, data = balanced_data_2to1, laplace = 1)
+
+# read comp dataset and create feature interactions for it
+
+df_comp = read.csv("CaseStudy1CompSet No Attrition.csv")
+df_comp$EducationField_JobRole = interaction(df_comp$EducationField, df_comp$JobRole)
+df_comp$BusinessTravel_JobRole = interaction(df_comp$BusinessTravel, df_comp$JobRole)
+df_comp$MaritalStatus_OverTime = interaction(df_comp$MaritalStatus, df_comp$OverTime)
+df_comp$Gender_OverTime = interaction(df_comp$Gender, df_comp$OverTime)
+df_comp$JobRole_OverTime = interaction(df_comp$JobRole, df_comp$OverTime)
+df_comp$EducationField_MaritalStatus = interaction(df_comp$EducationField, df_comp$MaritalStatus)
+df_comp$EnvironmentSatisfaction_WorkLifeBalance = interaction(df_comp$EnvironmentSatisfaction, df_comp$WorkLifeBalance)
+
+# predictions based on adjusted probability
+
+attrition_probs = predict(attrition_model, df_comp, type = "raw")
+df_comp$Attrition = ifelse(attrition_probs[, "Yes"] > 0.63, "Yes", "No")
+
+# create and write out submission file
+
+submission = df_comp[, c("ID", "Attrition")]
+submission = submission[order(submission$ID), ]
+
+write.csv(submission, "eric_graham_case_study_predictions.csv", row.names = FALSE)
+```

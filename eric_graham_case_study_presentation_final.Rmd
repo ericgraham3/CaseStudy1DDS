@@ -1,0 +1,174 @@
+---
+title: "DDS Project 1 Presentation"
+author: "Eric Graham"
+date: "2024-10-23"
+output: 
+  powerpoint_presentation:
+    slide_level: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Introduction
+
+![Eric Graham, Data Scientist, DDSAnalytics](profile.jpg)
+
+![Frito Lay, Global Snack Food Manufacturer](fl_logo.png)
+
+## Predicting Employee Attrition and Retention
+
+* Employee data provided by Frito Lay's Human Resources can reveal trends driving attrition
+* Exploratory data analysis provides a high-level view of attrition and retention
+* Classification models can help predict employee attrition
+
+### The Goal
+
+* Identify the causes of attrition
+* Empower leaders to build and maintain strong teams
+
+## Why is attrition important?
+
+* Employees are an investment
+* Employee turnover is costly
+  * [Applauz](https://www.applauz.me/resources/costs-of-employee-turnover) estimates that "The costs of replacing an individual worker can range from half to four times the employee’s annual salary."
+* Retention gives businesses a competitive advantage
+  * According to [Oracle](https://www.oracle.com/human-capital-management/employee-retention/), "Improving employee retention rates can lower costs, increase worker productivity, and ultimately boost revenues and profits."
+
+## Overview of Employee Dataset
+
+* Data provided for 870 employees, 16% of whom are positive for attrition
+* 36 features covering a variety of characteristics
+* Includes both objective information (age, pay, experience) and self-reported impressions of employee engagement and job satisfaction
+* No missing data
+
+## Highlight 1: Job Role
+
+![](job_role_3.png)
+
+|               | P-Value from Chi-Square Test |
+| ------------- | ---------------------------- |
+| JobRole       | <.0001                       |
+| Department    | 0.0094                       |
+
+## Highlight 2: Overtime
+
+![](overtime_3.png)
+|               | P-Value from Chi-Square Test |
+| ------------- | ---------------------------- |
+| OverTime      | <.0001                       |
+
+## Highlight 3: Marital Status
+
+![](marital_status_3.png)
+
+|               | P-Value from Chi-Square Test |
+| ------------- | ---------------------------- |
+| MaritalStatus | <.0001                       |
+
+## Correlation With Attrition
+
+![](corr_1.png)
+
+---
+
+#### Positive Correlation (increases chance of attrition)
+
+| Variable                   | Correlation |
+| -------------------------- | ----------- |
+| Distance from Home         | 0.0871363   |
+| Number of Companies Worked | 0.0610189   |
+| Hourly Rate                | 0.0365542   |
+| Performance Rating         | 0.0153338   |
+
+---
+
+#### Negative Correlation (decreases chance of attrition)
+
+| Variable                   | Correlation |
+| -------------------------- | ----------- |
+| Job Involvement            | -0.187793   |
+| Total Working Years        | -0.167206   |
+| Job Level                  | -0.162136   |
+| Years in Current Role      | -0.156216   |
+| Monthly Income             | -0.154915   |
+| Age                        | -0.149384   |
+| Stock Option Level         | -0.14868    |
+| Years with Current Manager | -0.146782   |
+| Years at Company           | -0.128754   |
+| Job Satisfaction           | -0.107521   |
+
+#### These relationships aren't strong individually, but together they can help build a predictive model
+
+## Predictive Model (Naive Bayes)
+
+* Uses Bayes' Theorem to calculate the probability of attrition by combining the individual probabilities of different factors
+* Recursive feature elimination to select most predictive features
+* Lasso regression to discover impactful feature interactions
+* Probability of target class can be adjusted to favor sensitivity or specificity
+
+## Recursive Feature Elimination
+
+* Iterates through the feature set, eliminating least important feature on each pass
+* Confirmed results from chi-square tests and correlation matrices
+* Reported "diminishing returns" beyond 25 features (final model includes 23)
+
+---
+
+![](var_import.png)
+
+---
+
+![](rfe.png)
+
+## Lasso Regression
+
+* Reduces large coefficients in linear model to prevent overfitting
+  * Useful for unbalanced datasets
+* Helps find the most impactful features and interactions
+* Introduces data from the EducationField, EnvironmentSatisfaction, and WorkLifeBalance features
+  * EnvironmentSatisfaction and WorkLifeBalance interaction brings self-reported data into the model
+
+---
+
+| Feature Interactions             |
+| -------------------------------- |
+| EducationField and JobRole       |
+| BusinessTravel and JobRole       |
+| MaritalStatus and OverTime       |
+| Gender and OverTime              |
+| JobRole and OverTime             |
+| EducationField and MaritalStatus |
+| EnvironmentSatisfaction and WorkLifeBalance |
+
+## Balancing Data and Tuning Probability Threshold
+
+### Data Balancing
+
+* Only 16% of the dataset positive for attrition, which biases the non-attrition class
+* Random downsampling created a 2-to-1 ratio of non-attrition to attrition
+* Improves sensitivity and specificity
+
+### Probability Threshold
+
+* This model struggled with false positives
+* Increasing the attrition probability threshold to 63% makes it more precise
+* Can be tuned further for cost-benefit analysis
+
+## Predictive Model Performance
+
+* Ran 10000 random seeds to test mean of accuracy, sensitivity, and specificity
+* 76.15% accuracy (proportion of all correct predictions)
+* 81.38% sensitivity (positively identifying attrition)
+* 65.83% specificity (avoiding false positives)
+* 81.81% F1 score (combined measurement of precision and sensitivity)
+
+## Next Steps
+
+* Analyze results of model against comparison dataset
+* Communicate results of EDA and modeling to management team
+  * Support their efforts to retain top talent
+* Further refine model to fit Frito Lay's needs
+  * Cost benefit analysis for attrition and retention
+* Questions/Comments/Suggestions? Contact Eric Graham (ericgraham@smu.edu)
