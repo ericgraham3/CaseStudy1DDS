@@ -27,6 +27,8 @@ options(scipen=999)
 
 [My Zoom recording can be found here](https://smu-2u-com.zoom.us/rec/share/EXHwE64QtUFJipHWpKZYXN5mIuR7KbZLP59McSuP9GrCcTYDHO3ZBDrGxHfcVXdU.Qbk0IuvE3_1WjFo1)
 
+[The Zoom link is limited to my org but the recording is also on Youtube here](https://youtu.be/K2NNqyql0Go)
+
 [My project repo can be found here](https://github.com/ericgraham3/CaseStudy1DDS)
 
 # Exploratory Data Analysis
